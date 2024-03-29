@@ -291,8 +291,17 @@ export class SlackEventHandler extends BaseSlackHandler {
         } else if (msg.subtype === "message_deleted" && msg.deleted_ts) {
             const originalEvent = await this.main.datastore.getEventBySlackId(msg.channel, msg.deleted_ts);
             if (originalEvent) {
-                const botClient = this.main.botIntent.matrixClient;
-                await botClient.redactEvent(originalEvent.roomId, originalEvent.eventId);
+                const previousMessage = msg.previous_message;
+                if (!previousMessage) {
+                    log.error("Cannot delete message with no previous_message:", msg);
+                    return;
+                }
+                if (!previousMessage.user) {
+                    log.error("Cannot redact Slack message if we don't know the original sender:", previousMessage);
+                    return;
+                }
+                const ghost = await this.main.ghostStore.get(previousMessage.user, previousMessage.team_domain, previousMessage.team);
+                await ghost.redactEvent(originalEvent.roomId, originalEvent.eventId);
                 return;
             }
             // If we don't have the event
