@@ -312,6 +312,43 @@ class Substitutions {
             return `${file.url_private}?pub_secret=${pubSecret[1]}`;
         }
     }
+
+    /*
+        Strip out reply fallbacks. Borrowed from
+        https://github.com/turt2live/matrix-js-bot-sdk/blob/master/src/preprocessors/RichRepliesPreprocessor.ts
+    */
+    public stripMatrixReplyFallback<T>(event: T & any): T {
+        if (!event.content?.body) {
+            return event;
+        }
+
+        let realHtml = event.content.formatted_body;
+        let realText = event.content.body || "";
+
+        if (event.content.format === "org.matrix.custom.html" && realHtml) {
+            const formattedBody = realHtml;
+            if (formattedBody.startsWith("<mx-reply>") && formattedBody.indexOf("</mx-reply>") !== -1) {
+                const parts = formattedBody.split("</mx-reply>");
+                realHtml = parts[1];
+                event.content.formatted_body = realHtml.trim();
+            }
+        }
+
+        let processedFallback = false;
+        for (const line of realText.split("\n")) {
+            if (line.startsWith("> ") && !processedFallback) {
+                continue;
+            } else if (!processedFallback) {
+                realText = line + "\n";
+                processedFallback = true;
+            } else {
+                realText += line + "\n";
+            }
+        }
+
+        event.content.body = realText.trim();
+        return event;
+    }
 }
 
 const substitutions = new Substitutions();

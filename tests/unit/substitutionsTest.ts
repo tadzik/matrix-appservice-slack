@@ -315,4 +315,12 @@ describe("Substitutions", () => {
             expect(res).to.equal("@room hello");
         });
     });
+
+    describe("stripMatrixReplyFallback", () => {
+        it("should leave newlines intact in messages", () => {
+            let message = { content: { body: "foo\nbar" } };
+            message = substitutions.stripMatrixReplyFallback(message);
+            expect(message.content.body).to.equal("foo\nbar");
+        });
+    });
 });
