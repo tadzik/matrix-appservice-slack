@@ -296,12 +296,24 @@ export class SlackEventHandler extends BaseSlackHandler {
                     log.error("Cannot delete message with no previous_message:", msg);
                     return;
                 }
-                if (!previousMessage.user) {
+                if (previousMessage.subtype === 'bot_message') {
+                    // Sent from Matrix, try to remove it with our bot account
+                    try {
+                        const botClient = this.main.botIntent.matrixClient;
+                        await botClient.redactEvent(originalEvent.roomId, originalEvent.eventId, "Deleted on Slack");
+                    } catch (err) {
+                        log.error("Failed to remove message", previousMessage, "with our Matrix bot: insufficient power level? Error:", err);
+                        return;
+                    }
+                }
+                else if (!previousMessage.user) {
                     log.error("Cannot redact Slack message if we don't know the original sender:", previousMessage);
                     return;
                 }
-                const ghost = await this.main.ghostStore.get(previousMessage.user, previousMessage.team_domain, previousMessage.team);
-                await ghost.redactEvent(originalEvent.roomId, originalEvent.eventId);
+                else {
+                    const ghost = await this.main.ghostStore.get(previousMessage.user, previousMessage.team_domain, previousMessage.team);
+                    await ghost.redactEvent(originalEvent.roomId, originalEvent.eventId);
+                }
                 return;
             }
             // If we don't have the event
