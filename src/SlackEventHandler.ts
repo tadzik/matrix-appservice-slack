@@ -296,7 +296,7 @@ export class SlackEventHandler extends BaseSlackHandler {
                     log.error("Cannot delete message with no previous_message:", msg);
                     return;
                 }
-                if (previousMessage.subtype === 'bot_message') {
+                if (previousMessage.subtype === 'bot_message' && (previousMessage.bot_id === team.bot_id)) {
                     // Sent from Matrix, try to remove it with our bot account
                     try {
                         const botClient = this.main.botIntent.matrixClient;
