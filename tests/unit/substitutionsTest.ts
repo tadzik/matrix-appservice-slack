@@ -322,5 +322,10 @@ describe("Substitutions", () => {
             message = substitutions.stripMatrixReplyFallback(message);
             expect(message.content.body).to.equal("foo\nbar");
         });
+        it("should not break code block contents", () => {
+            let message = { content: { body: "```\nfoo\n```" } };
+            message = substitutions.stripMatrixReplyFallback(message);
+            expect(message.content.body).to.equal("```\nfoo\n```");
+        });
     });
 });
