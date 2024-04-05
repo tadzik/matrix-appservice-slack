@@ -284,6 +284,7 @@ export class SlackEventHandler extends BaseSlackHandler {
             if (msg.message.bot_id !== undefined) {
                 // Check the edit wasn't sent by us
                 if (msg.message.bot_id === team.bot_id) {
+                    log.debug('Ignoring a message_changed since it was sent by us');
                     return;
                 } else {
                     msg.user_id = msg.message.bot_id;

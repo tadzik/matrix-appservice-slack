@@ -699,8 +699,9 @@ export class BridgedRoom {
                 await new Promise((r) => setTimeout(r, PUPPET_INCOMING_DELAY_MS));
             }
         }
-        if (this.recentSlackMessages.includes(message.ts)) {
+        if (this.recentSlackMessages.includes(message.event_ts ?? message.ts)) {
             // We sent this, ignore.
+            log.debug('Ignoring message recently sent by us');
             return;
         }
         try {
@@ -712,8 +713,8 @@ export class BridgedRoom {
             }
             this.slackSendLock = this.slackSendLock.then(() => {
                 // Check again
-                if (this.recentSlackMessages.includes(message.ts)) {
-                    // We sent this, ignore
+                if (this.recentSlackMessages.includes(message.event_ts ?? message.ts)) {
+                    log.debug('Ignoring message recently sent by us');
                     return;
                 }
                 return this.handleSlackMessage(message, ghost).catch((ex) => {
