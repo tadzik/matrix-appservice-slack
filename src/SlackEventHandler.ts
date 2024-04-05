@@ -18,6 +18,7 @@ import { BaseSlackHandler, ISlackEvent, ISlackMessageEvent, ISlackUser } from ".
 import { BridgedRoom } from "./BridgedRoom";
 import { Main, METRIC_RECEIVED_MESSAGE } from "./Main";
 import { Logger } from "matrix-appservice-bridge";
+import { TeamEntry } from "./datastore/Models";
 const log = new Logger("SlackEventHandler");
 
 /**
@@ -289,32 +290,10 @@ export class SlackEventHandler extends BaseSlackHandler {
                 }
             }
         } else if (msg.subtype === "message_deleted" && msg.deleted_ts) {
-            const originalEvent = await this.main.datastore.getEventBySlackId(msg.channel, msg.deleted_ts);
-            if (originalEvent) {
-                const previousMessage = msg.previous_message;
-                if (!previousMessage) {
-                    log.error("Cannot delete message with no previous_message:", msg);
-                    return;
-                }
-                if (previousMessage.subtype === 'bot_message' && (previousMessage.bot_id === team.bot_id)) {
-                    // Sent from Matrix, try to remove it with our bot account
-                    try {
-                        const botClient = this.main.botIntent.matrixClient;
-                        await botClient.redactEvent(originalEvent.roomId, originalEvent.eventId, "Deleted on Slack");
-                    } catch (err) {
-                        log.error("Failed to remove message", previousMessage, "with our Matrix bot: insufficient power level? Error:", err);
-                        return;
-                    }
-                }
-                else if (!previousMessage.user) {
-                    log.error("Cannot redact Slack message if we don't know the original sender:", previousMessage);
-                    return;
-                }
-                else {
-                    const ghost = await this.main.ghostStore.get(previousMessage.user, previousMessage.team_domain, previousMessage.team);
-                    await ghost.redactEvent(originalEvent.roomId, originalEvent.eventId);
-                }
-                return;
+            try {
+                await this.deleteMessage(msg, team);
+            } catch (err) {
+                log.error(err);
             }
             // If we don't have the event
             throw Error("unknown_message");
@@ -334,6 +313,42 @@ export class SlackEventHandler extends BaseSlackHandler {
 
         msg.text = await this.doChannelUserReplacements(msg, msg.text, room.SlackClient);
         return room.onSlackMessage(msg);
+    }
+
+    private async deleteMessage(msg: ISlackMessageEvent, team: TeamEntry): Promise<void> {
+        const originalEvent = await this.main.datastore.getEventBySlackId(msg.channel, msg.deleted_ts!);
+        if (originalEvent) {
+            const previousMessage = msg.previous_message;
+            if (!previousMessage) {
+                throw new Error(`Cannot delete message with no previous_message: ${JSON.stringify(msg)}`);
+            }
+
+            // Try to determine the Matrix user responsible for deleting the message, fallback to our main bot if all else fails
+            if (!previousMessage.user) {
+                log.warn("We don't know the original sender of", previousMessage, "will try to remove with our bot");
+            }
+
+            const isOurMessage = previousMessage.subtype === 'bot_message' && (previousMessage.bot_id === team.bot_id);
+
+            if (previousMessage.user && !isOurMessage) {
+                try {
+                    const ghost = await this.main.ghostStore.get(previousMessage.user, previousMessage.team_domain, previousMessage.team);
+                    await ghost.redactEvent(originalEvent.roomId, originalEvent.eventId);
+                    return;
+                } catch (err) {
+                    log.warn(`Failed to remove message on behalf of ${previousMessage.user}, falling back to our bot`);
+                }
+            }
+
+            try {
+                const botClient = this.main.botIntent.matrixClient;
+                await botClient.redactEvent(originalEvent.roomId, originalEvent.eventId, "Deleted on Slack");
+            } catch (err) {
+                throw new Error(
+                    `Failed to remove message ${JSON.stringify(previousMessage)} with our Matrix bot. insufficient power level? Error: ${err}`
+                );
+            }
+        }
     }
 
     private async handleReaction(event: ISlackEventReaction, teamId: string) {
