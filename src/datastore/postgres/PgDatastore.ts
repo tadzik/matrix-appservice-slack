@@ -178,9 +178,8 @@ export class PgDatastore implements Datastore, ClientEncryptionStore, Provisioni
             });
     }
 
-    public async getEventBySlackId(slackChannel: string, slackTs: string): Promise<EventEntry|null> {
-        log.debug(`getEventBySlackId: ${slackChannel} ${slackTs}`);
-        const events = await this.postgresDb.manyOrNone(
+    public async getEventsBySlackId(slackChannel: string, slackTs: string): Promise<EventEntry[]> {
+        return this.postgresDb.manyOrNone(
             "SELECT * FROM events WHERE slackChannel = ${slackChannel} AND slackTs = ${slackTs}",
             { slackChannel, slackTs }
         ).then(entries => entries.map(e => ({
@@ -190,8 +189,14 @@ export class PgDatastore implements Datastore, ClientEncryptionStore, Provisioni
             slackTs,
             _extras: JSON.parse(e.extras) as EventEntryExtra,
         })));
+    }
 
-        return events.find(e => e._extras.type !== 'attachment') ?? null;
+    /**
+     * @deprecated One Slack event may map to many Matrix events -- use getEventsBySlackId()
+     */
+    public async getEventBySlackId(slackChannel: string, slackTs: string): Promise<EventEntry|null> {
+        const events = await this.getEventsBySlackId(slackChannel, slackTs);
+        return events.find(e => !e._extras.attachment_id) ?? null;
     }
 
     public async deleteEventByMatrixId(roomId: string, eventId: string): Promise<null> {

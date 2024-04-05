@@ -879,7 +879,7 @@ export class BridgedRoom {
                 formatted_body: `<a href="${link}">${file.name}</a>`,
                 msgtype: "m.text",
             };
-            await ghost.sendMessage(this.matrixRoomId, messageContent, channelId, slackEventId, { type: "attachment" });
+            await ghost.sendMessage(this.matrixRoomId, messageContent, channelId, slackEventId, { attachment_id: file.id });
             return;
         }
 
@@ -918,7 +918,7 @@ export class BridgedRoom {
                 formatted_body: htmlCode,
                 msgtype: "m.text",
             };
-            await ghost.sendMessage(this.matrixRoomId, messageContent, channelId, slackEventId, { type: "attachment" });
+            await ghost.sendMessage(this.matrixRoomId, messageContent, channelId, slackEventId, { attachment_id: file.id });
             return;
         }
 
@@ -955,7 +955,7 @@ export class BridgedRoom {
             slackFileToMatrixMessage(file, fileContentUri, thumbnailContentUri),
             channelId,
             slackEventId,
-            { type: "attachment" },
+            { attachment_id: file.id },
         );
     }
 
@@ -1019,6 +1019,30 @@ export class BridgedRoom {
             // as we have added message.text ourselves and then transformed it.
             const newMessageRich = substitutions.slackToMatrix(message.text!);
             const newMessage = ghost.prepareBody(newMessageRich);
+
+            // Check if any of the attachments have been deleted.
+            // Slack unfortunately puts a "tombstone" in both message versions in this event,
+            // so let's try to remove every single one even if we may have deleted it before.
+            for (const file of message.message?.files ?? []) {
+                if (file.mode === 'tombstone') {
+                    const events = await this.main.datastore.getEventsBySlackId(channelId, message.previous_message!.ts);
+                    const event = events.find(e => e._extras.attachment_id === file.id);
+                    if (event) {
+                        const team = message.team_id ? await this.main.datastore.getTeam(message.team_id) : null;
+                        if (!team) {
+                            log.warn("Cannot determine team for message", message, "so we cannot delete attachment", file.id);
+                            continue;
+                        }
+                        try {
+                            await this.deleteMessage(message, event, team);
+                        } catch (err) {
+                            log.warn(`Failed to delete attachment ${file.id}:`, err);
+                        }
+                    } else {
+                        log.warn(`Tried to remove tombstoned attachmend ${file.id} but we didn't find a Matrix event for it`);
+                    }
+                }
+            }
 
             // The substitutions might make the messages the same
             if (previousMessage === newMessage) {
@@ -1238,6 +1262,39 @@ export class BridgedRoom {
         this.recentSlackMessages.push(ts);
         if (this.recentSlackMessages.length > RECENT_MESSAGE_MAX) {
             this.recentSlackMessages.shift();
+        }
+    }
+
+    public async deleteMessage(msg: ISlackMessageEvent, event: EventEntry, team: TeamEntry): Promise<void> {
+        const previousMessage = msg.previous_message;
+        if (!previousMessage) {
+            throw new Error(`Cannot delete message with no previous_message: ${JSON.stringify(msg)}`);
+        }
+
+        // Try to determine the Matrix user responsible for deleting the message, fallback to our main bot if all else fails
+        if (!previousMessage.user) {
+            log.warn("We don't know the original sender of", previousMessage, "will try to remove with our bot");
+        }
+
+        const isOurMessage = previousMessage.subtype === 'bot_message' && (previousMessage.bot_id === team.bot_id);
+
+        if (previousMessage.user && !isOurMessage) {
+            try {
+                const ghost = await this.main.ghostStore.get(previousMessage.user, previousMessage.team_domain, previousMessage.team);
+                await ghost.redactEvent(event.roomId, event.eventId);
+                return;
+            } catch (err) {
+                log.warn(`Failed to remove message on behalf of ${previousMessage.user}, falling back to our bot`);
+            }
+        }
+
+        try {
+            const botClient = this.main.botIntent.matrixClient;
+            await botClient.redactEvent(event.roomId, event.eventId, "Deleted on Slack");
+        } catch (err) {
+            throw new Error(
+                `Failed to remove message ${JSON.stringify(previousMessage)} with our Matrix bot. insufficient power level? Error: ${err}`
+            );
         }
     }
 }
