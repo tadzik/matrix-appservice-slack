@@ -321,6 +321,13 @@ export class SlackGhost {
         return Slackdown.parse(body);
     }
 
+    public async redactEvent(roomId: string, eventId: string) {
+        if (!this._intent) {
+            throw Error('No intent associated with ghost');
+        }
+        await this._intent.matrixClient.redactEvent(roomId, eventId);
+    }
+
     public async sendInThread(roomId: string, text: string, slackRoomId: string,
         slackEventTs: string, replyEvent: IMatrixReplyEvent): Promise<void> {
         const content = {
