@@ -878,7 +878,7 @@ export class BridgedRoom {
                 formatted_body: `<a href="${link}">${file.name}</a>`,
                 msgtype: "m.text",
             };
-            await ghost.sendMessage(this.matrixRoomId, messageContent, channelId, slackEventId);
+            await ghost.sendMessage(this.matrixRoomId, messageContent, channelId, slackEventId, { type: "attachment" });
             return;
         }
 
@@ -917,7 +917,7 @@ export class BridgedRoom {
                 formatted_body: htmlCode,
                 msgtype: "m.text",
             };
-            await ghost.sendMessage(this.matrixRoomId, messageContent, channelId, slackEventId);
+            await ghost.sendMessage(this.matrixRoomId, messageContent, channelId, slackEventId, { type: "attachment" });
             return;
         }
 
@@ -954,6 +954,7 @@ export class BridgedRoom {
             slackFileToMatrixMessage(file, fileContentUri, thumbnailContentUri),
             channelId,
             slackEventId,
+            { type: "attachment" },
         );
     }
 

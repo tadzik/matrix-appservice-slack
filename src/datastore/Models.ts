@@ -50,6 +50,7 @@ export interface EventEntry {
 }
 
 export interface EventEntryExtra {
+    type?: 'attachment';
     slackThreadMessages?: string[];
 }
 

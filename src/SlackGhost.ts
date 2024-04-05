@@ -19,7 +19,7 @@ import * as Slackdown from "Slackdown";
 import { ISlackUser } from "./BaseSlackHandler";
 import { WebClient } from "@slack/web-api";
 import { BotsInfoResponse, UsersInfoResponse } from "./SlackResponses";
-import { UserEntry, Datastore } from "./datastore/Models";
+import { UserEntry, Datastore, EventEntryExtra } from "./datastore/Models";
 import axios from "axios";
 
 const log = new Logger("SlackGhost");
@@ -368,7 +368,13 @@ export class SlackGhost {
         await this.sendMessage(roomId, content, slackRoomID, slackEventTS);
     }
 
-    public async sendMessage(roomId: string, msg: Record<string, unknown>, slackRoomId: string, slackEventTs: string): Promise<{event_id: string}> {
+    public async sendMessage(
+        roomId: string,
+        msg: Record<string, unknown>,
+        slackRoomId: string,
+        slackEventTs: string,
+        eventExtras?: EventEntryExtra,
+    ): Promise<{event_id: string}> {
         if (!this._intent) {
             throw Error('No intent associated with ghost');
         }
@@ -383,6 +389,7 @@ export class SlackGhost {
             matrixEvent.event_id,
             slackRoomId,
             slackEventTs,
+            eventExtras,
         );
 
         return {
