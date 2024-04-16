@@ -297,7 +297,7 @@ describe("Substitutions", () => {
         });
     });
 
-    describe("slackTextToMatrixHTML", () => {
+    describe("slackToMatrix", () => {
         it("should repeat a plain string", () => {
             const res = substitutions.slackToMatrix("Hello World!");
             expect(res).to.equal("Hello World!");
