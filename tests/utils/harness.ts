@@ -1,5 +1,6 @@
 import { AppServiceRegistration } from "matrix-appservice-bridge";
 import { Main } from "../../src/Main";
+import { FakeDatastore } from "./fakeDatastore";
 
 export const constructHarness = (): { main: Main } => {
     const reg = new AppServiceRegistration("foobar");
@@ -23,7 +24,8 @@ export const constructHarness = (): { main: Main } => {
         rtm: {
             enable: true,
         },
-    }, reg);
+        db: { engine: 'postgres', connectionString: '' },
+    }, reg, new FakeDatastore());
     const anyMain = main as any;
     anyMain.bridge.getBot = () => ({
         getJoinedRooms: async() => Promise.resolve([]),

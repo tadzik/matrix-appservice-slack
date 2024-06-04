@@ -31,6 +31,7 @@ import {
     Datastore,
     EventEntry,
     EventEntryExtra,
+    PostMigrationUserMessage,
     PuppetEntry,
     ReactionEntry,
     RoomEntry,
@@ -56,12 +57,7 @@ interface ClientSessionSchema {
     sync_token?: string;
 }
 
-export interface SchemaRunUserMessage {
-    matrixId: string,
-    message: string
-}
-
-type SchemaRunFn = (db: IDatabase<unknown>) => Promise<void|{userMessages: SchemaRunUserMessage[]}>;
+type SchemaRunFn = (db: IDatabase<unknown>) => Promise<void|{userMessages: PostMigrationUserMessage[]}>;
 
 export class PgDatastore implements Datastore, ClientEncryptionStore, ProvisioningStore {
     public static readonly LATEST_SCHEMA = 16;
@@ -261,8 +257,8 @@ export class PgDatastore implements Datastore, ClientEncryptionStore, Provisioni
         );
     }
 
-    public async ensureSchema(): Promise<SchemaRunUserMessage[]> {
-        const userMessages: SchemaRunUserMessage[] = [];
+    public async runMigrations(): Promise<PostMigrationUserMessage[]> {
+        const userMessages: PostMigrationUserMessage[] = [];
         let currentVersion = await this.getSchemaVersion();
         while (currentVersion < PgDatastore.LATEST_SCHEMA) {
             log.info(`Updating schema to v${currentVersion + 1}`);
@@ -316,7 +312,7 @@ export class PgDatastore implements Datastore, ClientEncryptionStore, Provisioni
         });
     }
 
-    public async upsertTeam(entry: TeamEntry): Promise<null> {
+    public async upsertTeam(entry: TeamEntry): Promise<void> {
         log.debug(`upsertTeam: ${entry.id} ${entry.name}`);
         const props = {
             id: entry.id,
@@ -329,7 +325,7 @@ export class PgDatastore implements Datastore, ClientEncryptionStore, Provisioni
             user_id: entry.user_id,
         };
         const statement = PgDatastore.BuildUpsertStatement("teams", ["id"], [props]);
-        return this.postgresDb.none(statement, props);
+        await this.postgresDb.none(statement, props);
     }
 
     private static teamEntryForRow(doc: any) {

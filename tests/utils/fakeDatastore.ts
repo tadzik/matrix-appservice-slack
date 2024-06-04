@@ -18,6 +18,10 @@ export class FakeDatastore implements Datastore {
 
     }
 
+    async runMigrations() {
+        return [];
+    }
+
     async insertAccount(): Promise<null> {
         throw new Error("Method not implemented.");
     }
@@ -68,7 +72,7 @@ export class FakeDatastore implements Datastore {
     }
 
     public async getAllRooms(): Promise<RoomEntry[]> {
-        throw Error("Method not implemented.");
+        return [];
     }
 
     public async upsertEvent(roomId: string, eventId: string, channelId: string, ts: string, extras?: EventEntryExtra): Promise<null>;

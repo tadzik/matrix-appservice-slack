@@ -91,7 +91,14 @@ export interface SlackAccount {
 
 export type RoomType = "user" | "channel";
 
+export interface PostMigrationUserMessage {
+    matrixId: string,
+    message: string
+}
+
 export interface Datastore extends ProvisioningStore {
+    runMigrations(): Promise<PostMigrationUserMessage[]>;
+    
     // Users
     upsertUser(user: SlackGhost): Promise<null>;
     getUser(id: string): Promise<UserEntry|null>;
@@ -124,7 +131,7 @@ export interface Datastore extends ProvisioningStore {
     deleteReactionBySlackId(channelId: string, messageTs: string, userId: string, reaction: string): Promise<null>;
 
     // Teams
-    upsertTeam(entry: TeamEntry);
+    upsertTeam(entry: TeamEntry): Promise<void>;
     getTeam(teamId: string): Promise<TeamEntry|null>;
     getAllTeams(): Promise<TeamEntry[]>;
     deleteTeam(teamId: string): Promise<null>;

@@ -19,7 +19,6 @@ import { ApiError, AppService, ErrCode, Logger, ProvisioningApi, ProvisioningReq
 
 import { Main } from "../Main";
 import { AuthTestResponse, ConversationsInfoResponse, ConversationsListResponse } from "../SlackResponses";
-import { NedbDatastore } from "../datastore/NedbDatastore";
 import {
     isValidGetAuthUrlBody,
     isValidGetChannelInfoBody,
@@ -102,12 +101,6 @@ export class Provisioner extends ProvisioningApi {
             // Disable all provision endpoints, responding with an error instead
             this.baseRoute.use((req, res, next) => next(new ApiError("Provisioning not enabled", ErrCode.DisabledFeature)));
             return;
-        }
-
-        if (this.store instanceof NedbDatastore) {
-            log.warn(
-                "Provisioner is incompatible with NeDB store. Widget requests will not be handled."
-            );
         }
 
         const wrapHandler = (handler: RequestHandler) =>

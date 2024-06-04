@@ -1,8 +1,8 @@
 import { IDatabase } from "pg-promise";
 
-import { SchemaRunUserMessage } from "../PgDatastore";
+import { PostMigrationUserMessage } from "../../Models";
 
-export const runSchema = async(db: IDatabase<unknown>): Promise<{userMessages: SchemaRunUserMessage[]}> => {
+export const runSchema = async(db: IDatabase<unknown>): Promise<{userMessages: PostMigrationUserMessage[]}> => {
     // Disallow multiple puppets for the same team for the same user.
     const cases =(await db.manyOrNone(
         `SELECT matrixuser, name FROM (

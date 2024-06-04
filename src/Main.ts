@@ -35,7 +35,6 @@ import { INTERNAL_ID_LEN } from "./BaseSlackHandler";
 import { SlackRTMHandler } from "./SlackRTMHandler";
 import { ConversationsInfoResponse, ConversationsOpenResponse, AuthTestResponse, UsersInfoResponse } from "./SlackResponses";
 import { Datastore, RoomEntry, SlackAccount, TeamEntry } from "./datastore/Models";
-import { NedbDatastore } from "./datastore/NedbDatastore";
 import { PgDatastore } from "./datastore/postgres/PgDatastore";
 import { SlackClientFactory } from "./SlackClientFactory";
 import { Response } from "express";
@@ -154,7 +153,11 @@ export class Main {
 
     public readonly membershipQueue: MembershipQueue;
 
-    constructor(public readonly config: IConfig, registration: AppServiceRegistration) {
+    constructor(
+        public readonly config: IConfig,
+        registration: AppServiceRegistration,
+        datastore?: Datastore,
+    ) {
         this.adminCommands = new AdminCommands(this);
 
         if (config.oauth2) {
@@ -184,37 +187,13 @@ export class Main {
             throw Error("Either rtm and/or oauth2 is not enabled, but puppeting is enabled. Both need to be enabled for puppeting to work.");
         }
 
-        let bridgeStores = {};
-        const usingNeDB = config.db === undefined || config.db?.engine === "nedb";
-        if (usingNeDB) {
-            const dbdir = config.dbdir || "";
-            const URL = "https://github.com/matrix-org/matrix-appservice-slack/blob/master/docs/datastores.md";
-            log.warn("** NEDB IS END-OF-LIFE **");
-            log.warn("Starting with version 1.0, the nedb datastore is being discontinued in favour of " +
-                     `postgresql. Please see ${URL} for more information.`);
-            if (config.rmau_limit) {
-                throw new Error("RMAU limits are unsupported in NeDB, cannot continue");
-            }
-            bridgeStores = {
-                eventStore: path.join(dbdir, "event-store.db"),
-                roomStore: path.join(dbdir, "room-store.db"),
-                userStore: path.join(dbdir, "user-store.db"),
-            };
-        } else {
-            bridgeStores = {
-                // Don't create store
-                disableStores: true,
-            };
-        }
-
-        if (config.db?.engine === "postgres") {
-            // Need to create this early for encryption support
+        if (datastore) {
+            this.datastore = datastore;
+        } else if (config.db.engine === "postgres") {
             const postgresDb = new PgDatastore(config.db.connectionString);
             this.datastore = postgresDb;
-        }
-
-        if (config.encryption?.enabled && config.db?.engine !== "postgres") {
-            throw Error('Encrypted bridge support only works with PostgreSQL.');
+        } else {
+            throw new Error(`Unsupported database engine: "${config.db?.engine}"`);
         }
 
         this.bridge = new Bridge({
@@ -277,7 +256,7 @@ export class Main {
             domain: config.homeserver.server_name,
             homeserverUrl: config.homeserver.url,
             registration,
-            ...bridgeStores,
+            disableStores: true,
             disableContext: true,
             suppressEcho: true,
             bridgeEncryption: config.encryption?.enabled ? {
@@ -1057,52 +1036,15 @@ export class Main {
 
         await UserAdminRoom.compileTemplates();
 
-        if (this.datastore instanceof PgDatastore) {
-            // We create this in the constructor because we need it for encryption
-            // support.
-            const userMessages = await this.datastore.ensureSchema();
-            for (const message of userMessages) {
-                let roomId = await this.datastore.getUserAdminRoom(message.matrixId);
-                if (!roomId) {
-                    // Unexpected, they somehow set up a puppet without creating an admin room.
-                    roomId = (await UserAdminRoom.inviteAndCreateAdminRoom(message.matrixId, this)).roomId;
-                }
-                log.info(`Sending one-time notice from schema to ${message.matrixId} (${roomId})`);
-                await this.botIntent.sendText(roomId, message.message);
+        const userMessages = await this.datastore.runMigrations();
+        for (const message of userMessages) {
+            let roomId = await this.datastore.getUserAdminRoom(message.matrixId);
+            if (!roomId) {
+                // Unexpected, they somehow set up a puppet without creating an admin room.
+                roomId = (await UserAdminRoom.inviteAndCreateAdminRoom(message.matrixId, this)).roomId;
             }
-        } else if (!this.config.db || this.config.db.engine === "nedb") {
-            await this.bridge.loadDatabases();
-            log.info("Loading teams.db");
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const NedbDs = require("nedb");
-            const teamDatastore = new NedbDs({
-                autoload: true,
-                filename: path.join(this.config.dbdir || "", "teams.db"),
-            });
-            await new Promise<void>((resolve, reject) => {
-                teamDatastore.loadDatabase(err => err ? reject(err) : resolve());
-            });
-            const reactionDatastore = new NedbDs({
-                autoload: true,
-                filename: path.join(this.config.dbdir || "", "reactions.db"),
-            });
-            await new Promise<void>((resolve, reject) => {
-                reactionDatastore.loadDatabase(err => err ? reject(err) : resolve());
-            });
-            const userStore = this.bridge.getUserStore();
-            const roomStore = this.bridge.getRoomStore();
-            const eventStore = this.bridge.getEventStore();
-            if (!userStore || !roomStore || !eventStore) {
-                throw Error('Bridge stores are not defined');
-            }
-            this.datastore = new NedbDatastore(
-                userStore,
-                roomStore,
-                eventStore,
-                teamDatastore,
-            );
-        } else {
-            throw Error("Unknown engine for database. Please use 'postgres' or 'nedb");
+            log.info(`Sending one-time notice from schema to ${message.matrixId} (${roomId})`);
+            await this.botIntent.sendText(roomId, message.message);
         }
 
         this.ghosts = new SlackGhostStore(this.rooms, this.datastore, this.config, this.bridge);
@@ -1242,27 +1184,25 @@ export class Main {
         await puppetsWaiting;
         await teamSyncPromise;
 
-        if (!(this.datastore instanceof NedbDatastore)) {
-            const uatConfig = {
-                ...UserActivityTrackerConfig.DEFAULT,
-            };
-            if (this.config.user_activity?.min_user_active_days !== undefined) {
-                uatConfig.minUserActiveDays = this.config.user_activity.min_user_active_days;
-            }
-            if (this.config.user_activity?.inactive_after_days !== undefined) {
-                uatConfig.inactiveAfterDays = this.config.user_activity.inactive_after_days;
-            }
-            this.bridge.opts.controller.userActivityTracker = new UserActivityTracker(
-                uatConfig,
-                await this.datastore.getUserActivity(),
-                (changes) => {
-                    this.onUserActivityChanged(changes).catch((ex) => {
-                        log.warn(`Failed to run onUserActivityChanged`, ex);
-                    });
-                },
-            );
-            await this.bridgeBlocker?.checkLimits(this.bridge.opts.controller.userActivityTracker.countActiveUsers().allUsers);
+        const uatConfig = {
+            ...UserActivityTrackerConfig.DEFAULT,
+        };
+        if (this.config.user_activity?.min_user_active_days !== undefined) {
+            uatConfig.minUserActiveDays = this.config.user_activity.min_user_active_days;
         }
+        if (this.config.user_activity?.inactive_after_days !== undefined) {
+            uatConfig.inactiveAfterDays = this.config.user_activity.inactive_after_days;
+        }
+        this.bridge.opts.controller.userActivityTracker = new UserActivityTracker(
+            uatConfig,
+            await this.datastore.getUserActivity(),
+            (changes) => {
+                this.onUserActivityChanged(changes).catch((ex) => {
+                    log.warn(`Failed to run onUserActivityChanged`, ex);
+                });
+            },
+        );
+        await this.bridgeBlocker?.checkLimits(this.bridge.opts.controller.userActivityTracker.countActiveUsers().allUsers);
 
         log.info("Bridge initialised");
         this.ready = true;

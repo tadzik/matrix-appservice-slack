@@ -93,8 +93,8 @@ export interface IConfig {
     slack_proxy?: string;
     enable_metrics: boolean;
 
-    db?: {
-        engine: "postgres"|"nedb";
+    db: {
+        engine: "postgres";
         connectionString: string;
     };
 
