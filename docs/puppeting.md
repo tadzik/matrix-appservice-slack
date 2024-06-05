@@ -40,7 +40,7 @@ oauth2:
 ```
 
 You must enable puppeting and RTM support. RTM support means the bridge will 
-use websockets to communicate with the bridge rather than HTTP pushed events.
+use websockets to communicate with Slack rather than using HTTP pushed events.
 
 Finally, you must have OAuth2 configured. OAuth2 is used to authenticate
 users with Slack and get the required access tokens in order to puppet   
