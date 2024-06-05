@@ -93,25 +93,27 @@ describe("WebhookTest", () => {
     });
 
     it("will reject webhooks not containing a valid token", () => {
-        let room = new BridgedRoom(harness.main as unknown as Main, {
-            matrix_room_id: '!foo:bar.baz',
-            inbound_id: randomstring.generate(32),
-            slack_webhook_token: randomstring.generate(24),
-            slack_type: "channel",
-        });
-        harness.main.rooms.upsertRoom(room);
+        ['invalid', undefined, null, true, "' or 1=1;--"].forEach(badToken => {
+            let room = new BridgedRoom(harness.main as unknown as Main, {
+                matrix_room_id: '!foo:bar.baz',
+                inbound_id: randomstring.generate(32),
+                slack_webhook_token: randomstring.generate(24),
+                slack_type: "channel",
+            });
+            harness.main.rooms.upsertRoom(room);
 
-        const req = httpMocks.createRequest({
-            method: 'POST',
-            url: 'http://foo.bar/webhooks/' + room.InboundId,
-            params: {
-                token: 'invalid',
-                ...DEFAULT_PAYLOAD,
-            },
-        });
+            const req = httpMocks.createRequest({
+                method: 'POST',
+                url: 'http://foo.bar/webhooks/' + room.InboundId,
+                params: {
+                    token: badToken,
+                    ...DEFAULT_PAYLOAD,
+                },
+            });
 
-        return checkResult(req, res => {
-            expect(res.statusCode).to.equal(403);
+            return checkResult(req, res => {
+                expect(res.statusCode).to.equal(403);
+            });
         });
     });
 });
