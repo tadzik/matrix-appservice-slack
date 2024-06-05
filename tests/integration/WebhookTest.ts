@@ -73,7 +73,7 @@ describe("WebhookTest", () => {
             });
         });
 
-        harness.hooks._onRequest(req, res);
+        harness.hooks['onRequest'](req, res);
 
         req.emit('end');
 

@@ -67,7 +67,7 @@ export class SlackHookHandler extends BaseSlackHandler {
             createServer = (cb) => httpsCreate(tlsOptions, cb);
         }
         return new Promise<void>((resolve, reject) => {
-            const srv = createServer(this._onRequest.bind(this));
+            const srv = createServer(this.onRequest.bind(this));
             srv.once("error", reject);
             srv.listen(port, () => {
                 const protocol = tlsConfig ? "https" : "http";
@@ -85,7 +85,7 @@ export class SlackHookHandler extends BaseSlackHandler {
         }
     }
 
-    public _onRequest(req: IncomingMessage, res: ServerResponse) {
+    private onRequest(req: IncomingMessage, res: ServerResponse) {
         const HTTP_SERVER_ERROR = 500;
         const {method, url } = req;
         if (!method || !url) {
