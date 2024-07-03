@@ -62,6 +62,12 @@ export class SlackAppHandler extends SlackEventHandler {
                     ...msg,
                     user_id: msg.user,
                 }, this.teamId);
+            case "message_changed":
+                return this.handleMessageEvent({
+                    ...msg as any,
+                    user_id: '', // SlackEventHandler requires, but ignores this...
+                    user: (msg.previous_message as any).user, // ...and actually uses this
+                }, this.teamId);
             case "message_deleted":
                 return this.handleMessageEvent({
                     ...msg as any,
