@@ -58,6 +58,7 @@ export class SlackAppHandler extends SlackEventHandler {
 
         switch (msg.subtype) {
             case undefined: // regular message
+            case "file_share":
                 return this.handleEvent({
                     ...msg,
                     user_id: msg.user,
